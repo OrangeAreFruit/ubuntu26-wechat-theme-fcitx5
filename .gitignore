@@ -1,6 +1,8 @@
 # 构建产物与暂存
 /dist/
 /build/
+/debian/
+/tmp/
 
 # 编辑器/系统
 *.swp
