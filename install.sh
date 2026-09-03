@@ -8,7 +8,6 @@
 #  ● 安全：绝不删除用户数据。
 #          - 不 purge 任何输入法（避免误删其他输入法用户配置）
 #          - Rime 已有词库(userdb/build) 保留，只补充词典
-#          - 所有被覆盖的系统文件自动备份到 /root/fcitx5-backup-<时间戳>/
 #  ● 用法：解压仓库后（或 git clone 后）在仓库根目录执行：
 #          sudo bash install.sh
 #  ● 输出：每步都有日志；末尾有 fcitx5 是否正常启动的提示
@@ -34,15 +33,13 @@ START=$(date +%s)
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PKG="$ROOT/packages"
 PANEL_SRC="$ROOT/wechat-panel"
-BACKUP="/root/fcitx5-backup-$(date +%Y%m%d-%H%M%S)"
 LIBDIR="/usr/lib/x86_64-linux-gnu"
 FCITX_ADDON="$LIBDIR/fcitx5"
 
 ARCHIVE="$PKG/fcitx5-svg-5.1.22-linux-x86_64.tar.gz"
 
-info "目标用户: $HUSER ($HHOME)  仓库: $ROOT"
-mkdir -p "$BACKUP"
-info "备份目录: $BACKUP （所有被覆盖的系统文件都会备份到这里）"
+info "目标用户: $HUSER ($HHOME) 仓库: $ROOT"
+info "Note: All existing user data (rime userdb, configs) is preserved and untouched."
 
 # ---------------- 前置检查 ----------------
 step "0. 前置检查"
@@ -82,12 +79,11 @@ fi
 # 微信/QQ 等 Electron 应用走 XWayland（X11 兼容层），它们不认 Wayland 的
 # text-input 协议，必须通过 XMODIFIERS + fcitx5 的 XIM 服务才能输入。
 # 向 /etc/environment 追加三件套（所有用户/所有应用全局生效，幂等，
-# 不覆盖已有内容；先备份原文件）。
+# 不覆盖已有内容）。
 # 安全性：GTK 应用的批量崩溃由 GTK4 枚举 immodules 目录加载
 # libim-fcitx5.so 引起（下方会移除模块文件），与这些环境变量无关；
 # 模块移除后 GTK_IM_MODULE=fcitx 只会让 GTK fallback 到默认输入，无崩溃路径。
 ENVF="/etc/environment"
-[ -f "$ENVF" ] && cp -a "$ENVF" "$BACKUP/etc_environment.orig" 2>/dev/null || true
 append_env() {
   local key="$1" val="$2"
   if grep -qE "^${key}=" "$ENVF" 2>/dev/null; then
@@ -113,9 +109,8 @@ for f in \
   "/usr/lib/x86_64-linux-gnu/gtk-3.0/3.0.0/immodules/im-fcitx5.so" \
   "/usr/lib/x86_64-linux-gnu/gtk-2.0/2.10.0/immodules/im-fcitx5.so"; do
   if [ -f "$f" ]; then
-    cp -a "$f" "$BACKUP${f//\//_}.orig" 2>/dev/null || true
-    rm -f "$f"
-    info "已移除 GTK IM 模块：$f（修复 GTK 应用崩溃）"
+	    rm -f "$f"
+	    info "已移除 GTK IM 模块：$f（修复 GTK 应用崩溃）"
   fi
 done
 
@@ -126,14 +121,13 @@ for cand in /usr/lib/x86_64-linux-gnu/libgtk-3-0/gtk-query-immodules-3.0 \
   [ -x "$cand" ] && { GTK3_Q="$cand"; break; }
 done
 if [ -n "$GTK3_Q" ]; then
-  GTK3_IM="/usr/lib/x86_64-linux-gnu/gtk-3.0/3.0.0"
-  if ls "$GTK3_IM"/immodules/im-*.so >/dev/null 2>&1; then
-    cp -a "$GTK3_IM/immodules.cache" "$BACKUP/immodules-gtk3.cache.orig" 2>/dev/null || true
-    "$GTK3_Q" "$GTK3_IM"/immodules/im-*.so > "$GTK3_IM/immodules.cache" 2>/dev/null \
-      && info "GTK3 输入法模块缓存已重建（与目录一致）" \
-      || warn "GTK3 模块缓存重建失败（可忽略，Wayland 下不依赖它）"
-  fi
-fi
+	  GTK3_IM="/usr/lib/x86_64-linux-gnu/libgtk-3-0/gtk-3.0"
+	  if ls "$GTK3_IM"/immodules/im-*.so >/dev/null 2>&1; then
+	    "$GTK3_Q" "$GTK3_IM"/immodules/im-*.so > "$GTK3_IM"/immodules.cache 2>/dev/null \
+	      && info "GTK3 输入法模块缓存已重建（与目录一致）" \
+	      || warn "GTK3 模块缓存重建失败（可忽略，Wayland 下不依赖它）"
+	  fi
+	fi
 
 [ -f "$ARCHIVE" ] || { err "缺少 $ARCHIVE（SVG fcitx5 压缩包）"; exit 1; }
 [ -d "$PKG/rime-ice" ] || { err "缺少 $PKG/rime-ice/ 词库"; exit 1; }
@@ -143,13 +137,6 @@ fi
 step "1. 部署自编译 SVG fcitx5 (5.1.22 + 补丁)"
 TMP="$(mktemp -d)"
 tar -xzf "$ARCHIVE" -C "$TMP"
-# 备份将被覆盖的 /usr 文件
-while read -r f; do
-  rel="${f#./}"
-  [ -e "/$rel" ] || continue
-  mkdir -p "$BACKUP/$(dirname "$rel")"
-  cp -a "/$rel" "$BACKUP/$rel" 2>/dev/null || true
-done < <(cd "$TMP" && find . -type f -o -type l | sed 's#^\./##')
 cp -a "$TMP/usr/bin"/*        /usr/bin/
 cp -a "$TMP/usr/lib/x86_64-linux-gnu/." "$LIBDIR/"
 cp -a "$TMP/usr/share/fcitx5/." /usr/share/fcitx5/
@@ -189,10 +176,6 @@ info "雾凇拼音词库已就绪（已有 userdb/build 已保留）"
 step "4. 配置 fcitx5 (经典UI + 仅启雾凇拼音)"
 CFG_DIR="$HHOME/.config/fcitx5"
 mkdir -p "$CFG_DIR/conf"
-# 备份现有 classicui.conf
-if [ -f "$CFG_DIR/conf/classicui.conf" ]; then
-  cp -a "$CFG_DIR/conf/classicui.conf" "$BACKUP/classicui.conf.orig" 2>/dev/null || true
-fi
 cat > "$CFG_DIR/conf/classicui.conf" <<'EOF'
 # Fcitx5 经典UI(候选框) —— 微信风格
 Font="Noto Sans CJK SC 16"
@@ -200,9 +183,6 @@ Theme=wechat-light
 PerScreenDPI=False
 EOF
 # 输入法表：保留已有组外，确保 rime 可用（不删除用户自建的其它输入法组）
-if [ -f "$CFG_DIR/profile" ]; then
-  cp -a "$CFG_DIR/profile" "$BACKUP/profile.orig" 2>/dev/null || true
-fi
 cat > "$CFG_DIR/profile" <<'EOF'
 [Groups/0]
 Name=Default
@@ -221,7 +201,7 @@ cat > "$CFG_DIR/conf/classicui.ini" <<'EOF'
 Enabled=True
 EOF
 chown -R "$HUSER":"$(id -gn "$HUSER")" "$HHOME/.config/fcitx5" "$HHOME/.local/share/fcitx5" 2>/dev/null || true
-info "fcitx5 配置完成（已有输入法配置仅备份未删除）"
+info "fcitx5 配置完成"
 
 # ---------------- 5. 安装设置面板（pywebview + QtWebEngine） ----------------
 step "5. 安装 Web 设置面板"
@@ -316,6 +296,6 @@ echo "  - 输入法: 雾凇拼音 (rime-ice)"
 echo "  - 主题:   wechat-light / wechat-dark"
 echo "  - 面板:   /opt/fcitx5-wechat-panel  (自启动)"
 echo "  - 托盘:   菜单 = Preference(设置面板) + Restart"
-echo "  - 备份:   $BACKUP"
 echo "  - 提示:   注销重新登录一次，让输入法环境变量彻底生效"
+echo "  - 安全:   All existing user data (rime userdb, configs) is preserved"
 echo "=============================================================="
