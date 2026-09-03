@@ -1,15 +1,3 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="320" height="54">
-  <defs>
-    <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%">
-      <feGaussianBlur in="SourceAlpha" stdDeviation="8"/>
-      <feOffset dx="0" dy="0"/>
-      <feFlood flood-color="#C8C8CC" flood-opacity="0.22"/>
-      <feComposite in2="SourceAlpha" operator="in"/>
-      <feMerge>
-        <feMergeNode/>
-        <feMergeNode in="SourceGraphic"/>
-      </feMerge>
-    </filter>
-  </defs>
-  <rect x="0" y="0" width="320" height="54" rx="10" ry="10" fill="rgba(30,30,32,0.88)" filter="url(#shadow)"/>
+  <rect x="0.5" y="0.5" width="319" height="53" rx="10" ry="10" fill="rgba(30,30,32,0.88)" stroke="#3C3C3E" stroke-width="1"/>
 </svg>
